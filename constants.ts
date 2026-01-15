@@ -1,0 +1,38 @@
+
+export const FREE_SHIPPING_THRESHOLD = 0;
+
+/**
+ * Valor do frete fixado em R$ 9,90 para somar R$ 89,80 com o produto de R$ 79,90.
+ */
+export const STANDARD_SHIPPING_PRICE = 9.90;
+
+export const MOCK_ITEMS = [
+  {
+    id: 'fadas-kit-artesanal',
+    name: 'FADA ARTESANAL',
+    price: 79.90,
+    quantity: 1,
+    image: ''
+  }
+];
+
+/**
+ * --- CONFIGURAÇÃO INVICTUS PAY ---
+ */
+export const INVICTUS_PAY_CONFIG = {
+  API_URL: 'https://api.invictuspay.app.br/api/public/v1',
+  API_TOKEN: import.meta.env.VITE_INVICTUS_TOKEN || '',
+
+  OFFERS: {
+    FREE_SHIPPING: 'gmvowuyoib', // Oferta de R$ 79,90
+    PAID_SHIPPING: 'ld4kumu4vp', // Oferta de R$ 89,80 (Hash da imagem Neymar)
+    DISCOUNTED: 'offer_5990_discount', // Oferta de R$ 59,90 (Ajuste este hash se necessário)
+  },
+
+  ALLOW_TEST_MODE: true,
+};
+
+export const SUPABASE_CONFIG = {
+  URL: import.meta.env.VITE_SUPABASE_URL || '',
+  ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+};
