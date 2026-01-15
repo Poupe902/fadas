@@ -42,10 +42,38 @@ const PixPayment: React.FC<PixPaymentProps> = ({ pixData, loading }: any) => {
     return url;
   }, [pixData]);
 
-  const handleCopy = () => {
-    if (pixData?.qrcode) {
-      navigator.clipboard.writeText(pixData.qrcode);
-      setCopied(true);
+  const handleCopy = async () => {
+    if (!pixData?.qrcode) return;
+
+    try {
+      // Tenta o método moderno primeiro
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(pixData.qrcode);
+        setCopied(true);
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
+    } catch (err) {
+      // Fallback para navegadores sem HTTPS ou suporte à API moderna
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = pixData.qrcode;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (successful) setCopied(true);
+      } catch (fallbackErr) {
+        console.error("Erro total ao copiar:", fallbackErr);
+        alert("Não foi possível copiar automaticamente. Por favor, selecione o texto e copie manualmente.");
+      }
+    }
+
+    if (copied) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
