@@ -20,8 +20,8 @@ export const MOCK_ITEMS = [
  * --- CONFIGURAÇÃO INVICTUS PAY ---
  */
 export const INVICTUS_PAY_CONFIG = {
-  API_URL: 'https://api.invictuspay.app.br/api/public/v1',
-  API_TOKEN: import.meta.env.VITE_INVICTUS_TOKEN || '',
+  API_URL: 'https://api.invictuspay.app.br/v1',
+  API_TOKEN: 'IYCoH1R6LnB5POVuv5LTKwc9uyER0IPVcY9SrSSKU5fC0E1XauTIFRAMKF50',
 
   OFFERS: {
     FREE_SHIPPING: 'gmvowuyoib', // Oferta de R$ 79,90
@@ -29,10 +29,10 @@ export const INVICTUS_PAY_CONFIG = {
     DISCOUNTED: 'offer_5990_discount', // Oferta de R$ 59,90 (Ajuste este hash se necessário)
   },
 
-  ALLOW_TEST_MODE: true,
+  ALLOW_TEST_MODE: false,
 };
 
 export const SUPABASE_CONFIG = {
-  URL: import.meta.env.VITE_SUPABASE_URL || '',
-  ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+  URL: 'https://rckqhortwgtztkcyqvik.supabase.co',
+  ANON_KEY: 'sb_publishable_C9OsSGE54AbAP2mkd9QWrw_Jyg1qYG1'
 };
