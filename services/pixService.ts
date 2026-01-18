@@ -27,23 +27,27 @@ export const pixService = {
     
     const amountInCents = Math.round(amount * 100);
     
-    // 1. LIMPEZA RADICAL DOS DADOS
+    // 1. LIMPEZA DOS DADOS
     let cleanCpf = cpf.replace(/\D/g, '');
     let cleanPhone = phone.replace(/\D/g, '');
-    let cleanName = name.trim().replace(/[^\w\sÀ-ÿ]/gi, ''); // Remove caracteres especiais do nome
+    let cleanName = name.trim().replace(/[^\w\sÀ-ÿ]/gi, '');
+    
+    // Validação rigorosa do E-mail para evitar erro "email inválido"
+    let cleanEmail = (email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      cleanEmail = "atendimento@fadasartesanais.com.br";
+    }
 
-    // 2. CONTINGÊNCIA MASTER (Dados que a Invictus sempre aceita)
-    // Se o CPF não tiver 11 dígitos, usamos um CPF real válido para o gateway
+    // 2. CONTINGÊNCIA (Dados básicos para evitar rejeição por formato)
     if (cleanCpf.length !== 11) {
       cleanCpf = "45137083060"; 
     }
     
-    // Se o telefone for muito curto ou inválido
     if (cleanPhone.length < 10 || cleanPhone.length > 11) {
       cleanPhone = "11999999999";
     }
 
-    // Se o nome for muito curto ou estranho
     if (cleanName.length < 3) {
       cleanName = "Cliente Fadas Artesanais";
     }
@@ -54,7 +58,7 @@ export const pixService = {
       payment_method: "pix",
       customer: {
         name: cleanName,
-        email: (email && email.includes('@')) ? email.trim().toLowerCase() : "atendimento@fadasartesanais.com.br",
+        email: cleanEmail,
         phone_number: cleanPhone,
         document: cleanCpf
       },
@@ -91,26 +95,38 @@ export const pixService = {
       try {
         json = JSON.parse(responseText);
       } catch (e) {
+        console.error("Erro ao processar JSON da Invictus:", responseText);
         throw new Error("Resposta inválida do servidor de pagamento.");
       }
       
       const data = json.data || json;
 
-      // 3. TRATAMENTO DE ERRO LEGÍVEL (Evita o [object Object])
+      // 3. TRATAMENTO DE ERRO MELHORADO
       if (data.payment_status === 'failed' || !response.ok) {
-        console.error("Log Detalhado Invictus:", json);
+        // Exibimos o objeto completo no log para depuração
+        console.error("Log Detalhado Invictus:", JSON.stringify(json, null, 2));
         
         let errorMsg = "Tente novamente ou use outro CPF.";
         
-        if (typeof data.status_reason === 'string') {
-          errorMsg = data.status_reason;
-        } else if (typeof json.message === 'string') {
-          errorMsg = json.message;
-        } else if (json.errors) {
-          // Se for um objeto de erros do Laravel/PHP, transforma em string
+        // Prioridade de extração de mensagens de erro:
+        // 1. Objeto 'errors' detalhado
+        // 2. Campo 'error' (onde a Invictus costuma colocar "O email do cliente é inválido")
+        // 3. Campo 'status_reason' dentro de 'data'
+        // 4. Campo 'message' (que costuma ser genérico: "Ocorreu um erro...")
+        
+        if (json.errors) {
           errorMsg = Object.values(json.errors).flat().join(', ');
-        } else if (typeof data.status_reason === 'object' && data.status_reason !== null) {
+        } else if (typeof json.error === 'string') {
+          errorMsg = json.error;
+        } else if (typeof data.status_reason === 'string') {
+          errorMsg = data.status_reason;
+        } else if (typeof json.message === 'string' && !json.message.includes("Ocorreu um erro ao processar")) {
+          errorMsg = json.message;
+        } else if (data.status_reason && typeof data.status_reason === 'object') {
           errorMsg = JSON.stringify(data.status_reason);
+        } else if (typeof json.message === 'string') {
+          // Se for a mensagem genérica, mas não tivermos nada mais específico, mantemos a genérica
+          errorMsg = json.message;
         }
 
         throw new Error(errorMsg);
@@ -119,21 +135,16 @@ export const pixService = {
       return pixService.extractPixData(json);
 
     } catch (error: any) {
-      // Garante que o erro lançado seja sempre uma string e não um objeto
       const finalError = typeof error.message === 'string' ? error.message : "Erro desconhecido no PIX";
       console.error(`Erro Final PIX:`, finalError);
       throw new Error(finalError);
     }
   },
 
-  /**
-   * Extrai o código PIX e a Imagem de qualquer lugar da resposta.
-   */
   extractPixData: (json: any): PixResponse => {
     const data = json.data || json;
     let foundQrCode = '';
     
-    // Busca profunda pelo código que começa com 000201 (Padrão PIX)
     const findEMV = (obj: any): string => {
       if (!obj || typeof obj !== 'object') return '';
       
