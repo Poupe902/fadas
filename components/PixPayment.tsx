@@ -93,7 +93,7 @@ const PixPayment: React.FC<PixPaymentProps> = ({ pixData, loading }) => {
         
         <div className="flex items-center justify-center gap-3 py-2">
            <div className="h-[1px] flex-1 bg-gray-100"></div>
-           <p className="text-[9px] font-black text-gray-200 uppercase tracking-widest">Invictus Pay Secure</p>
+           <p className="text-[9px] font-black text-gray-200 uppercase tracking-widest"> Pay Secure</p>
            <div className="h-[1px] flex-1 bg-gray-100"></div>
         </div>
       </div>
