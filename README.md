@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# Checkout Seguro - Fadas Artesanais
 
-This contains everything you need to run your app locally.
+Este é o sistema de checkout oficial da loja Fadas Artesanais, focado em alta conversão e segurança.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1oAqcs8KyQ1u9Gi7Xsz0uI4qSYZYqMiB_
+## Tecnologias Utilizadas
+- **React 19** com TypeScript
+- **Tailwind CSS** para estilização
+- **Vite** como bundler
+- **Supabase** para persistência de dados e recuperação de vendas
+- **Invictus Pay API** para processamento de PIX
 
-## Run Locally
+## Configuração de Deploy (GitHub Pages)
 
-**Prerequisites:**  Node.js
+O projeto já está configurado para deploy automático via GitHub Actions.
 
+1. Suba os arquivos para o seu repositório.
+2. O arquivo `.github/workflows/deploy.yml` cuidará da build e publicação.
+3. Certifique-se de que o `base` no `vite.config.ts` corresponde ao nome do seu repositório (ex: `/fadas/`).
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Funcionalidades
+- Checkout em 3 passos (Identificação, Entrega, Pagamento).
+- Validação automática de CEP (ViaCEP).
+- Gerador de PIX Dinâmico com QR Code e Copia e Cola.
+- Sistema de recuperação de carrinho via Supabase.
+- Layout responsivo e focado em dispositivos móveis.

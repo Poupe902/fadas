@@ -1,5 +1,5 @@
 {
-  "name": "Pagamento Seguro Fadas Artesanais",
-  "description": "A high-fidelity React checkout page featuring integrated shipping forms, credit card processing (Supabase ready), and Pix gateway integration.",
+  "name": "Checkout Fadas Artesanais",
+  "description": "Sistema de Pagamento Seguro - Fadas Artesanais",
   "requestFramePermissions": []
 }

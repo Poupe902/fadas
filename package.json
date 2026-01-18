@@ -1,3 +1,4 @@
+
 {
   "name": "fadas-artesanais-checkout",
   "private": true,
@@ -13,7 +14,6 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",

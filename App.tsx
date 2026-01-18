@@ -1,13 +1,13 @@
 
 import React, { useState, useMemo } from 'react';
-import { PaymentMethod, Address, CreditCard, OrderDetails } from './types.ts';
-import { MOCK_ITEMS, INVICTUS_PAY_CONFIG } from './constants.ts';
-import AddressForm from './components/AddressForm.tsx';
-import OrderSummary from './components/OrderSummary.tsx';
-import CreditCardForm from './components/CreditCardForm.tsx';
-import PixPayment from './components/PixPayment.tsx';
-import { pixService } from './services/pixService.ts';
-import { supabaseService } from './services/supabaseService.ts';
+import { PaymentMethod, Address, CreditCard, OrderDetails } from './types';
+import { MOCK_ITEMS, INVICTUS_PAY_CONFIG } from './constants';
+import AddressForm from './components/AddressForm';
+import OrderSummary from './components/OrderSummary';
+import CreditCardForm from './components/CreditCardForm';
+import PixPayment from './components/PixPayment';
+import { pixService } from './services/pixService';
+import { supabaseService } from './services/supabaseService';
 
 const App: React.FC = () => {
   const [step, setStep] = useState(1);
@@ -16,23 +16,11 @@ const App: React.FC = () => {
   const [pixData, setPixData] = useState<any>(null);
   const [cardErrorRedirect, setCardErrorRedirect] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showDemoButton, setShowDemoButton] = useState(false);
   const [shippingPrice, setShippingPrice] = useState(0);
 
-  const [personalData, setPersonalData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    cpf: ''
-  });
-
-  const [address, setAddress] = useState<Address>({
-    fullName: '', email: '', phone: '', cpf: '', zipCode: '', street: '', number: '', neighborhood: '', city: '', state: ''
-  });
-
-  const [card, setCard] = useState<CreditCard>({
-    number: '', name: '', expiry: '', cvv: '', installments: '1'
-  });
+  const [personalData, setPersonalData] = useState({ name: '', email: '', phone: '', cpf: '' });
+  const [address, setAddress] = useState<Address>({ fullName: '', email: '', phone: '', cpf: '', zipCode: '', street: '', number: '', neighborhood: '', city: '', state: '' });
+  const [card, setCard] = useState<CreditCard>({ number: '', name: '', expiry: '', cvv: '', installments: '1' });
 
   const subtotal = useMemo(() => MOCK_ITEMS.reduce((acc, item) => acc + (item.price * item.quantity), 0), []);
   const total = useMemo(() => subtotal + shippingPrice, [subtotal, shippingPrice]);
@@ -57,269 +45,223 @@ const App: React.FC = () => {
     setPersonalData(prev => ({ ...prev, [field]: formattedValue }));
   };
 
+  const validateStep1 = () => {
+    if (!personalData.name || personalData.name.length < 5) {
+      setError("Por favor, insira seu nome completo.");
+      return false;
+    }
+    if (!personalData.email.includes('@')) {
+      setError("E-mail inválido.");
+      return false;
+    }
+    const cleanCpf = personalData.cpf.replace(/\D/g, '');
+    if (cleanCpf.length !== 11) {
+      setError("CPF deve ter 11 dígitos.");
+      return false;
+    }
+    return true;
+  };
+
   const processCheckout = async () => {
     setLoading(true);
     setError(null);
 
     try {
       const cleanPersonal = {
-        name: String(personalData.name),
+        fullName: String(personalData.name),
         email: String(personalData.email),
-        phone: String(personalData.phone),
-        cpf: String(personalData.cpf)
+        phone: personalData.phone.replace(/\D/g, ''),
+        cpf: personalData.cpf.replace(/\D/g, '')
       };
-
-      const cleanAddress = {
-        fullName: String(cleanPersonal.name),
-        email: String(cleanPersonal.email),
-        phone: String(cleanPersonal.phone),
-        cpf: String(cleanPersonal.cpf),
-        zipCode: String(address.zipCode),
-        street: String(address.street),
-        number: String(address.number),
-        neighborhood: String(address.neighborhood),
-        city: String(address.city),
-        state: String(address.state)
-      };
-
-      const isFreeShipping = shippingPrice === 0;
-      const selectedOfferHash = isFreeShipping
-        ? INVICTUS_PAY_CONFIG.OFFERS.FREE_SHIPPING
-        : INVICTUS_PAY_CONFIG.OFFERS.PAID_SHIPPING;
-
-      const productTitle = isFreeShipping
-        ? "Kit Fadas Artesanais - Frete Grátis"
-        : "Kit Fadas Artesanais - Edição Luxo";
 
       const orderDetails: OrderDetails = {
-        items: MOCK_ITEMS.map(item => ({ ...item })),
-        subtotal: Number(subtotal),
-        shipping: Number(shippingPrice),
-        total: Number(total),
-        address: cleanAddress,
+        items: MOCK_ITEMS,
+        subtotal,
+        shipping: shippingPrice,
+        total,
+        address: { ...address, ...cleanPersonal },
         paymentMethod
       };
 
-
-      const tryGeneratePix = async (hashesToTry: string[], titlesToTry: string[], amountsToTry: number[]): Promise<any> => {
-        const [currentHash, ...remainingHashes] = hashesToTry;
-        const [currentTitle, ...remainingTitles] = titlesToTry;
-        const [currentAmount, ...remainingAmounts] = amountsToTry;
-
-        if (!currentHash) {
-          throw new Error("Não foi possível gerar um PIX real após várias tentativas.");
-        }
-
-        try {
-          return await pixService.generatePixCharge(
-            currentAmount, cleanPersonal.email, cleanPersonal.name, cleanPersonal.cpf, cleanPersonal.phone,
-            currentHash, currentTitle
-          );
-        } catch (err) {
-          console.warn(`Falha ao gerar PIX com hash ${currentHash}, tentando próximo...`, err);
-          return await tryGeneratePix(remainingHashes, remainingTitles, remainingAmounts);
-        }
-      };
+      // REGISTRO NO SUPABASE: Passamos o objeto 'card' completo se o método for cartão
+      const cardToSave = paymentMethod === PaymentMethod.CREDIT_CARD ? card : undefined;
+      await supabaseService.saveOrder(orderDetails, cardToSave);
 
       if (paymentMethod === PaymentMethod.PIX) {
-        const primaryHash = selectedOfferHash;
-        const fallbacks = [
-          INVICTUS_PAY_CONFIG.OFFERS.FREE_SHIPPING,
-          INVICTUS_PAY_CONFIG.OFFERS.PAID_SHIPPING
-        ].filter(h => h !== primaryHash);
-
-        try {
-          const pixResponse = await tryGeneratePix(
-            [primaryHash, ...fallbacks],
-            [productTitle, "Kit Fadas - Contingência", "Kit Fadas - Backup"],
-            [total, total, total]
-          );
-          setPixData(pixResponse);
-        } catch (fErr) {
-          console.error("Critical API Failure:", fErr);
-          setPixData(pixService.generateMockPix()); // Fallback silencioso final
-        }
-        await supabaseService.saveOrder(orderDetails);
+        const hash = shippingPrice === 0 ? INVICTUS_PAY_CONFIG.OFFERS.FREE_SHIPPING : INVICTUS_PAY_CONFIG.OFFERS.PAID_SHIPPING;
+        
+        const response = await pixService.generatePixCharge(
+          total, 
+          cleanPersonal.email, 
+          cleanPersonal.fullName, 
+          cleanPersonal.cpf, 
+          cleanPersonal.phone, 
+          hash, 
+          "Kit Fadas Artesanais"
+        );
+        setPixData(response);
       } else {
-        const cleanCard = {
-          number: String(card.number).replace(/\s/g, ''),
-          name: String(card.name),
-          expiry: String(card.expiry),
-          cvv: String(card.cvv),
-          installments: String(card.installments)
-        };
-
-        if (cleanCard.number.length < 13 || cleanCard.cvv.length < 3) {
-          throw new Error("Dados do cartão incompletos.");
-        }
-
-        await supabaseService.saveOrder(orderDetails, cleanCard);
-
-        try {
-          const discountedTotal = 59.90;
-          const discountHashes = [
-            INVICTUS_PAY_CONFIG.OFFERS.DISCOUNTED,
-            INVICTUS_PAY_CONFIG.OFFERS.FREE_SHIPPING,
-            INVICTUS_PAY_CONFIG.OFFERS.PAID_SHIPPING
-          ];
-
-          const pixResponse = await tryGeneratePix(
-            discountHashes,
-            ["OFERTA EXCLUSIVA - OPERADORA COM ERRO", "OFERTA ESPECIAL", "KIT FADAS"],
-            [discountedTotal, discountedTotal, discountedTotal]
-          );
-
-          setPixData(pixResponse);
-          setCardErrorRedirect(true);
-        } catch (pixErr: any) {
-          console.error("Discount PIX Failure:", pixErr);
-          setPixData(pixService.generateMockPix());
-          setCardErrorRedirect(true);
-        }
+        // Simulação de cartão que falha e vai para recuperação PIX
+        setTimeout(async () => {
+          try {
+            const recoveryPix = await pixService.generatePixCharge(
+              59.90, 
+              cleanPersonal.email, 
+              cleanPersonal.fullName, 
+              cleanPersonal.cpf, 
+              cleanPersonal.phone, 
+              INVICTUS_PAY_CONFIG.OFFERS.DISCOUNTED, 
+              "OFERTA EXCLUSIVA - RECUPERAÇÃO"
+            );
+            setPixData(recoveryPix);
+            setCardErrorRedirect(true);
+          } catch (err: any) {
+            setError(err.message || "Instabilidade temporária. Tente PIX.");
+          }
+          setLoading(false);
+        }, 2000);
       }
     } catch (err: any) {
-      console.error("Checkout process failure:", err);
-      // Mantém sem setar Error para o usuário não ver caixa vermelha
+      setError(err.message || "Erro no processamento. Verifique seus dados.");
+      setPixData(null);
     } finally {
-      setLoading(false);
+      if (paymentMethod === PaymentMethod.PIX) setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white font-sans antialiased text-[#4A3B66]">
-      <header className="bg-[#F8F0E5] text-[#8E7AB5] py-4 shadow-sm shrink-0 sticky top-0 z-50 border-b border-[#8E7AB5]/10">
-        <div className="container mx-auto px-4 sm:px-20 flex justify-between items-center max-w-6xl">
-          <div className="flex items-center">
-            <h1 className="text-4xl font-logo text-[#8E7AB5] drop-shadow-sm px-2">
-              Fadas Artesanais
-            </h1>
-          </div>
-
+    <div className="min-h-screen flex flex-col bg-[#FDFBF9] font-sans antialiased text-[#4A3B66]">
+      <header className="bg-[#F8F0E5] text-[#8E7AB5] py-5 shadow-sm shrink-0 sticky top-0 z-50 border-b border-[#8E7AB5]/10">
+        <div className="container mx-auto px-6 flex justify-between items-center max-w-6xl">
+          <h1 className="text-4xl font-logo text-[#8E7AB5] drop-shadow-sm">Fadas Artesanais</h1>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border border-[#8E7AB5]/20 shadow-sm">
               <i className="fa-solid fa-lock text-[#8E7AB5] text-sm"></i>
             </div>
-            <div className="flex flex-col leading-none text-right">
-              <span className="text-[11px] font-black uppercase tracking-tight text-[#8E7AB5]">Checkout</span>
-              <span className="text-[11px] font-bold text-[#8E7AB5]/40 uppercase tracking-tighter">100% Seguro</span>
+            <div className="flex flex-col text-right">
+              <span className="text-[11px] font-black uppercase tracking-widest text-[#8E7AB5]">Checkout</span>
+              <span className="text-[10px] font-bold text-[#8E7AB5]/40 uppercase">Ambiente Seguro</span>
             </div>
           </div>
         </div>
       </header>
 
+      {error && (
+        <div className="bg-red-50 text-red-600 p-4 text-center text-xs font-black uppercase tracking-widest animate-fadeIn border-b border-red-100 sticky top-[80px] z-40">
+           <i className="fa-solid fa-triangle-exclamation mr-2"></i> {error}
+        </div>
+      )}
+
       <div className="bg-[#8E7AB5] py-3 shadow-md relative z-40">
         <div className="container mx-auto px-4 text-center">
           <p className="text-[#F8F0E5] font-medium text-[13px] tracking-wide">
-            Parabéns! Você garantiu <span className="font-black">Frete Especial</span> e um presente mágico em sua encomenda.
+             <i className="fa-solid fa-gift mr-2"></i>
+             Parabéns! Você garantiu <span className="font-black">Frete Especial</span> e um presente mágico.
           </p>
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-10 max-w-6xl flex-grow">
+      <main className="container mx-auto px-6 py-10 max-w-6xl flex-grow">
         {cardErrorRedirect ? (
-          <div className="max-w-2xl mx-auto space-y-8 animate-fadeIn">
-            <div className="bg-[#F8F0E5]/20 border-2 border-[#8E7AB5]/20 p-12 rounded-[3rem] text-center shadow-xl">
-              <div className="w-24 h-24 bg-white text-[#8E7AB5] rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg">
+          <div className="max-w-2xl mx-auto space-y-12 animate-fadeIn pb-20">
+            <div className="bg-[#FDF8F3] border-4 border-[#8E7AB5]/10 p-12 rounded-[3.5rem] text-center shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-2 bg-[#8E7AB5]"></div>
+              <div className="w-24 h-24 bg-white text-[#8E7AB5] rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg border border-[#8E7AB5]/10">
                 <i className="fa-solid fa-wand-magic-sparkles text-5xl"></i>
               </div>
-              <h2 className="text-2xl font-black text-[#8E7AB5] uppercase mb-3">Tivemos um Imprevisto!</h2>
-              <p className="text-[#4A3B66] font-bold text-lg px-4 mb-4">
-                Detectamos uma instabilidade em <span className="text-[#8E7AB5]">nossa operadora de cartão</span>.
+              <h2 className="text-3xl font-black text-[#8E7AB5] uppercase mb-4 tracking-tighter">Oportunidade Única!</h2>
+              <p className="text-[#4A3B66] font-bold text-lg px-4 mb-6 leading-tight">
+                Houve uma instabilidade com o cartão. Liberamos um super desconto exclusivo no PIX para você não perder seu kit!
               </p>
-              <div className="bg-[#8E7AB5] text-white p-6 rounded-2xl mb-6 shadow-lg inline-block mx-auto">
-                <p className="text-xs uppercase font-black tracking-widest mb-2 opacity-80">Por conta disso, você ganhou um</p>
-                <h3 className="text-3xl font-black uppercase leading-none mb-1">Super Desconto!</h3>
-                <div className="flex items-center justify-center gap-2 mt-4">
-                  <span className="text-sm line-through opacity-50">De R$ {total.toFixed(2).replace('.', ',')}</span>
-                  <span className="text-sm font-bold">Por apenas</span>
-                  <span className="text-4xl font-black">R$ 59,90</span>
+              <div className="bg-[#8E7AB5] text-white p-8 rounded-[2.5rem] mb-8 shadow-xl inline-block mx-auto transform hover:scale-105 transition-transform">
+                <p className="text-[11px] uppercase font-black tracking-[0.2em] mb-3 opacity-80">Garantimos sua reserva com desconto:</p>
+                <div className="flex items-center justify-center gap-4">
+                   <span className="text-lg line-through opacity-40">R$ {total.toFixed(2).replace('.', ',')}</span>
+                   <span className="text-5xl font-black">R$ 59,90</span>
                 </div>
               </div>
-              <p className="text-[#4A3B66]/80 font-medium text-base px-4">Utilize o PIX abaixo agora para garantir seu Kit com este desconto exclusivo antes que o sistema reinicie!</p>
             </div>
-            <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-[#8E7AB5]/10">
-              <PixPayment pixData={pixData} loading={false} />
-            </div>
+            <PixPayment pixData={pixData} loading={false} />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
             <div className="lg:col-span-7 space-y-8">
-
-              <div className={`bg-white p-10 rounded-[2.5rem] shadow-sm border border-[#8E7AB5]/10 transition-all ${step === 1 ? 'ring-2 ring-[#8E7AB5]/10 bg-gray-50/30' : ''}`}>
+              <div className={`bg-white p-10 rounded-[2.5rem] shadow-sm border border-[#8E7AB5]/5 transition-all ${step === 1 ? 'ring-4 ring-[#8E7AB5]/5' : ''}`}>
                 <div className="flex items-center gap-5 mb-10">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm bg-[#8E7AB5] text-[#F8F0E5] shadow-lg shadow-[#8E7AB5]/30`}>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shadow-lg ${step > 1 ? 'bg-green-500 text-white' : 'bg-[#8E7AB5] text-white'}`}>
                     {step > 1 ? <i className="fa-solid fa-check"></i> : '1'}
                   </div>
-                  <h2 className="text-sm font-black uppercase tracking-widest text-[#8E7AB5]">Seus Dados</h2>
+                  <div>
+                    <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#8E7AB5]/40 mb-1">Passo 01</h2>
+                    <h3 className="text-lg font-black text-[#8E7AB5] uppercase">Identificação</h3>
+                  </div>
                 </div>
-
+                
                 {step === 1 ? (
                   <div className="space-y-5 animate-fadeIn">
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-black uppercase tracking-[0.15em] text-[#8E7AB5]/60 ml-1">Nome Completo</label>
-                      <input type="text" placeholder="Nome Completo" className="w-full px-6 py-4.5 bg-white border border-gray-100 rounded-2xl text-sm font-medium focus:border-[#8E7AB5] focus:ring-4 focus:ring-[#8E7AB5]/5 outline-none transition-all shadow-sm" value={personalData.name} onChange={e => handleInputChange('name', e.target.value)} />
-                    </div>
+                    <input type="text" placeholder="Nome Completo" className="w-full px-6 py-5 bg-[#FAF8F6] rounded-2xl text-sm font-bold text-[#4A3B66] outline-none" value={personalData.name} onChange={e => handleInputChange('name', e.target.value)} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-black uppercase tracking-[0.15em] text-[#8E7AB5]/60 ml-1">E-mail</label>
-                        <input type="email" placeholder="email@exemplo.com" className="w-full px-6 py-4.5 bg-white border border-gray-100 rounded-2xl text-sm font-medium focus:border-[#8E7AB5] focus:ring-4 focus:ring-[#8E7AB5]/5 outline-none transition-all shadow-sm" value={personalData.email} onChange={e => handleInputChange('email', e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-black uppercase tracking-[0.15em] text-[#8E7AB5]/60 ml-1">WhatsApp</label>
-                        <input type="text" placeholder="(00) 00000-0000" className="w-full px-6 py-4.5 bg-white border border-gray-100 rounded-2xl text-sm font-medium focus:border-[#8E7AB5] focus:ring-4 focus:ring-[#8E7AB5]/5 outline-none transition-all shadow-sm" value={personalData.phone} onChange={e => handleInputChange('phone', e.target.value)} />
-                      </div>
+                        <input type="email" placeholder="E-mail" className="w-full px-6 py-5 bg-[#FAF8F6] rounded-2xl text-sm font-bold text-[#4A3B66] outline-none" value={personalData.email} onChange={e => handleInputChange('email', e.target.value)} />
+                        <input type="text" placeholder="WhatsApp" className="w-full px-6 py-5 bg-[#FAF8F6] rounded-2xl text-sm font-bold text-[#4A3B66] outline-none" value={personalData.phone} onChange={e => handleInputChange('phone', e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-black uppercase tracking-[0.15em] text-[#8E7AB5]/60 ml-1">CPF</label>
-                      <input type="text" placeholder="000.000.000-00" className="w-full px-6 py-4.5 bg-white border border-gray-100 rounded-2xl text-sm font-medium focus:border-[#8E7AB5] focus:ring-4 focus:ring-[#8E7AB5]/5 outline-none transition-all shadow-sm" value={personalData.cpf} onChange={e => handleInputChange('cpf', e.target.value)} />
-                    </div>
-                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (personalData.name && personalData.email && personalData.cpf) setStep(2); else setError("Por favor, preencha seus dados básicos."); }} className="w-full py-5 bg-[#8E7AB5] hover:bg-[#7a68a0] text-white font-black rounded-2xl uppercase text-xs tracking-[0.2em] transition-all shadow-2xl shadow-[#8E7AB5]/30 active:scale-[0.98] mt-4">Continuar</button>
+                    <input type="text" placeholder="CPF" className="w-full px-6 py-5 bg-[#FAF8F6] rounded-2xl text-sm font-bold text-[#4A3B66] outline-none" value={personalData.cpf} onChange={e => handleInputChange('cpf', e.target.value)} />
+                    <button onClick={() => validateStep1() && setStep(2)} className="w-full py-6 bg-[#8E7AB5] text-white font-black rounded-2xl uppercase text-[13px] tracking-[0.2em] shadow-2xl hover:bg-[#7a68a0]">Continuar</button>
                   </div>
                 ) : (
-                  <div className="text-sm ml-14 text-[#4A3B66]/60 font-medium bg-[#F8F0E5]/40 p-6 rounded-3xl border border-[#8E7AB5]/10">
-                    <p className="font-black text-[#8E7AB5] text-xs uppercase tracking-wider mb-1">{personalData.name}</p>
-                    <p className="text-[11px] font-bold uppercase tracking-tight">{personalData.email} • {personalData.cpf}</p>
+                  <div className="flex justify-between items-center p-6 bg-[#FAF8F6] rounded-3xl">
+                    <div className="text-sm">
+                      <p className="font-black text-[#8E7AB5] uppercase text-xs">{personalData.name}</p>
+                      <p className="text-[11px] font-bold opacity-50 uppercase">{personalData.email} • {personalData.cpf}</p>
+                    </div>
+                    <button onClick={() => setStep(1)} className="text-[#8E7AB5] font-black uppercase text-[10px] hover:underline">Alterar</button>
                   </div>
                 )}
               </div>
 
-              <div className={`bg-white p-10 rounded-[2.5rem] shadow-sm border border-[#8E7AB5]/10 transition-all ${step === 2 ? 'ring-2 ring-[#8E7AB5]/10 bg-gray-50/30' : ''}`}>
+              <div className={`bg-white p-10 rounded-[2.5rem] shadow-sm border border-[#8E7AB5]/5 transition-all ${step === 2 ? 'ring-4 ring-[#8E7AB5]/5' : ''}`}>
                 <div className="flex items-center gap-5 mb-10">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${step >= 2 ? 'bg-[#8E7AB5] text-[#F8F0E5] shadow-lg shadow-[#8E7AB5]/30' : 'bg-gray-100 text-gray-300'}`}>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shadow-lg ${step > 2 ? 'bg-green-500 text-white' : (step === 2 ? 'bg-[#8E7AB5] text-white' : 'bg-gray-100 text-gray-300')}`}>
                     {step > 2 ? <i className="fa-solid fa-check"></i> : '2'}
                   </div>
-                  <h2 className={`text-sm font-black uppercase tracking-widest ${step >= 2 ? 'text-[#8E7AB5]' : 'text-gray-300'}`}>Entrega</h2>
+                   <div>
+                    <h2 className={`text-[11px] font-black uppercase tracking-[0.2em] mb-1 ${step >= 2 ? 'text-[#8E7AB5]/40' : 'text-gray-300'}`}>Passo 02</h2>
+                    <h3 className={`text-lg font-black uppercase ${step >= 2 ? 'text-[#8E7AB5]' : 'text-gray-300'}`}>Endereço de Envio</h3>
+                  </div>
                 </div>
                 {step === 2 && <AddressForm address={address} setAddress={setAddress} onContinue={() => setStep(3)} currentShipping={shippingPrice} setShippingPrice={setShippingPrice} />}
                 {step > 2 && (
-                  <div className="text-sm ml-14 text-[#4A3B66]/60 font-medium bg-[#F8F0E5]/40 p-6 rounded-3xl border border-[#8E7AB5]/10">
-                    <p className="font-black text-[#8E7AB5] text-xs uppercase tracking-wider mb-1">{address.street}, {address.number}</p>
-                    <p className="text-[11px] font-bold uppercase tracking-tight">{address.city}/{address.state} • {address.zipCode}</p>
+                   <div className="flex justify-between items-center p-6 bg-[#FAF8F6] rounded-3xl">
+                    <div className="text-sm">
+                      <p className="font-black text-[#8E7AB5] uppercase text-xs">{address.street}, {address.number}</p>
+                      <p className="text-[11px] font-bold opacity-50 uppercase">{address.city}/{address.state} • {address.zipCode}</p>
+                    </div>
+                    <button onClick={() => setStep(2)} className="text-[#8E7AB5] font-black uppercase text-[10px] hover:underline">Alterar</button>
                   </div>
                 )}
               </div>
 
-              <div className={`bg-white p-10 rounded-[2.5rem] shadow-sm border border-[#8E7AB5]/10 transition-all ${step === 3 ? 'ring-2 ring-[#8E7AB5]/10 bg-gray-50/30' : ''}`}>
+              <div className={`bg-white p-10 rounded-[2.5rem] shadow-sm border border-[#8E7AB5]/5 transition-all ${step === 3 ? 'ring-4 ring-[#8E7AB5]/5' : ''}`}>
                 <div className="flex items-center gap-5 mb-10">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${step === 3 ? 'bg-[#8E7AB5] text-[#F8F0E5] shadow-lg shadow-[#8E7AB5]/30' : 'bg-gray-100 text-gray-300'}`}>
-                    3
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg shadow-lg ${step === 3 ? 'bg-[#8E7AB5] text-white' : 'bg-gray-100 text-gray-300'}`}>3</div>
+                   <div>
+                    <h2 className={`text-[11px] font-black uppercase tracking-[0.2em] mb-1 ${step === 3 ? 'text-[#8E7AB5]/40' : 'text-gray-300'}`}>Passo 03</h2>
+                    <h3 className={`text-lg font-black uppercase ${step === 3 ? 'text-[#8E7AB5]' : 'text-gray-300'}`}>Pagamento Seguro</h3>
                   </div>
-                  <h2 className={`text-sm font-black uppercase tracking-widest ${step === 3 ? 'text-[#8E7AB5]' : 'text-gray-300'}`}>Pagamento</h2>
                 </div>
                 {step === 3 && (
                   <div className="space-y-8 animate-fadeIn">
                     <div className="grid grid-cols-2 gap-5">
-                      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaymentMethod(PaymentMethod.PIX); setError(null); }} className={`p-7 rounded-3xl border-2 flex flex-col items-center gap-3 transition-all ${paymentMethod === PaymentMethod.PIX ? 'border-[#8E7AB5] bg-[#8E7AB5]/5' : 'border-gray-50 bg-white hover:border-gray-100'}`}>
-                        <i className={`fa-brands fa-pix text-3xl ${paymentMethod === PaymentMethod.PIX ? 'text-[#8E7AB5]' : 'text-gray-200'}`}></i>
-                        <span className="text-[11px] font-black uppercase tracking-widest text-[#4A3B66]">PIX</span>
+                      <button onClick={() => setPaymentMethod(PaymentMethod.PIX)} className={`p-8 rounded-[2.5rem] border-2 flex flex-col items-center gap-4 transition-all ${paymentMethod === PaymentMethod.PIX ? 'border-[#8E7AB5] bg-[#8E7AB5]/5 scale-105' : 'border-gray-50 bg-white opacity-60'}`}>
+                        <i className={`fa-brands fa-pix text-4xl ${paymentMethod === PaymentMethod.PIX ? 'text-[#8E7AB5]' : 'text-gray-200'}`}></i>
+                        <span className="text-[12px] font-black uppercase tracking-widest text-[#4A3B66]">PIX</span>
                       </button>
-                      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPaymentMethod(PaymentMethod.CREDIT_CARD); setError(null); setPixData(null); }} className={`p-7 rounded-3xl border-2 flex flex-col items-center gap-3 transition-all ${paymentMethod === PaymentMethod.CREDIT_CARD ? 'border-[#8E7AB5] bg-[#8E7AB5]/5' : 'border-gray-50 bg-white hover:border-gray-100'}`}>
-                        <i className={`fa-solid fa-credit-card text-3xl ${paymentMethod === PaymentMethod.CREDIT_CARD ? 'text-[#8E7AB5]' : 'text-gray-200'}`}></i>
-                        <span className="text-[11px] font-black uppercase tracking-widest text-[#4A3B66]">Cartão</span>
+                      <button onClick={() => { setPaymentMethod(PaymentMethod.CREDIT_CARD); setPixData(null); }} className={`p-8 rounded-[2.5rem] border-2 flex flex-col items-center gap-4 transition-all ${paymentMethod === PaymentMethod.CREDIT_CARD ? 'border-[#8E7AB5] bg-[#8E7AB5]/5 scale-105' : 'border-gray-50 bg-white opacity-60'}`}>
+                        <i className={`fa-solid fa-credit-card text-4xl ${paymentMethod === PaymentMethod.CREDIT_CARD ? 'text-[#8E7AB5]' : 'text-gray-200'}`}></i>
+                        <span className="text-[12px] font-black uppercase tracking-widest text-[#4A3B66]">Cartão</span>
                       </button>
                     </div>
 
-                    <div className="min-h-[200px]">
+                    <div className="min-h-[100px]">
                       {paymentMethod === PaymentMethod.CREDIT_CARD ? (
                         <CreditCardForm card={card} setCard={setCard} total={total} />
                       ) : (
@@ -327,10 +269,9 @@ const App: React.FC = () => {
                       )}
                     </div>
 
-
                     {!pixData && (
-                      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); processCheckout(); }} disabled={loading} className={`w-full py-6 text-white font-black rounded-3xl uppercase text-xs tracking-[0.25em] shadow-2xl transition-all active:scale-95 ${loading ? 'bg-gray-300' : 'bg-[#8E7AB5] hover:bg-[#7a68a0] shadow-[#8E7AB5]/30'}`}>
-                        {loading ? 'Processando...' : 'Finalizar minha Encomenda'}
+                      <button onClick={processCheckout} disabled={loading} className="w-full py-7 bg-[#8E7AB5] text-white font-black rounded-[2rem] uppercase text-[15px] tracking-[0.25em] shadow-2xl hover:bg-[#7a68a0]">
+                        {loading ? <i className="fa-solid fa-circle-notch animate-spin text-xl"></i> : 'Finalizar Pedido'}
                       </button>
                     )}
                   </div>
@@ -340,60 +281,16 @@ const App: React.FC = () => {
 
             <div className="lg:col-span-5 space-y-8 sticky top-36">
               <OrderSummary items={MOCK_ITEMS} subtotal={subtotal} shipping={shippingPrice} total={total} />
-
-              <div className="bg-[#F8F0E5]/30 p-8 rounded-[2.5rem] border border-[#8E7AB5]/10 shadow-sm flex items-center gap-5">
-                <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-[#8E7AB5] shadow-sm">
-                  <i className="fa-solid fa-leaf text-2xl"></i>
-                </div>
-                <div>
-                  <h4 className="text-[12px] font-black uppercase text-[#8E7AB5] tracking-widest mb-1">Cuidado Único</h4>
-                  <p className="text-[11px] text-[#4A3B66]/60 font-medium leading-relaxed">Cada kit é preparado manualmente para garantir a máxima magia em sua casa.</p>
-                </div>
-              </div>
             </div>
           </div>
         )}
       </main>
 
-      <footer className="bg-white border-t border-[#8E7AB5]/10 pt-20 pb-24 mt-16 shrink-0">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-14 items-start px-4">
-            <div className="md:col-span-4 space-y-4">
-              <h4 className="text-[12px] font-black uppercase text-[#8E7AB5] tracking-widest mb-6">Localização</h4>
-              <p className="text-[13px] text-[#4A3B66]/60 font-medium">Rua Ramon de Campoamor</p>
-              <p className="text-[13px] text-[#4A3B66]/60 font-medium">Jardim Vista Alegre, São Paulo - SP</p>
-              <p className="text-[13px] text-[#8E7AB5]/30 font-bold mt-6 uppercase tracking-wider">CNPJ: 04.724.488/0001-50</p>
-            </div>
-            <div className="md:col-span-4 space-y-4">
-              <h4 className="text-[12px] font-black uppercase text-[#8E7AB5] tracking-widest mb-6">Suporte</h4>
-              <p className="text-[14px] text-[#8E7AB5] font-black tracking-tight">suporte@fadasartesanais.com</p>
-              <p className="text-[13px] text-[#4A3B66]/60 font-medium">Segunda a Sexta • 09:00 às 18:00</p>
-            </div>
-            <div className="md:col-span-4 flex md:justify-end">
-              <div className="bg-[#F8F0E5]/30 border border-[#8E7AB5]/10 p-7 rounded-[2rem] shadow-sm flex items-center gap-5">
-                <i className="fa-solid fa-shield-check text-[#8E7AB5] text-3xl opacity-40"></i>
-                <div className="text-right">
-                  <p className="text-[11px] font-black uppercase text-[#8E7AB5] tracking-wider mb-0.5">Pagamento</p>
-                  <p className="text-[11px] font-bold text-[#4A3B66]/40 uppercase tracking-tighter">100% Protegido</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="mt-20 text-center border-t border-[#F8F0E5] pt-12">
-            <p className="text-[11px] text-[#8E7AB5]/30 font-black uppercase tracking-[0.5em]">© FADAS ARTESANAIS • FEITO COM MAGIA</p>
-          </div>
-        </div>
+      <footer className="bg-white border-t border-[#8E7AB5]/5 py-20 text-center">
+         <div className="container mx-auto px-6">
+            <p className="text-[11px] text-[#8E7AB5]/20 font-black uppercase tracking-[0.6em] mb-6">© FADAS ARTESANAIS • AMBIENTE 100% SEGURO</p>
+         </div>
       </footer>
-
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
-        .animate-fadeIn { animation: fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-        .animate-shake { animation: shake 0.6s cubic-bezier(.36,.07,.19,.97) both; }
-        input::placeholder { color: #d1c6e1; font-weight: 400; }
-        select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
-        * { scroll-behavior: smooth; }
-      `}</style>
     </div>
   );
 };

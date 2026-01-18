@@ -12,27 +12,33 @@ export const MOCK_ITEMS = [
     name: 'FADA ARTESANAL',
     price: 79.90,
     quantity: 1,
-    image: ''
+    image: '' 
   }
 ];
 
 /**
  * --- CONFIGURAÇÃO INVICTUS PAY ---
+ * Dados extraídos da imagem do painel:
+ * Produto: FADAS (tudbgmmiyt)
+ * Ofertas: 79,90 (wzf27jv8np), 89,80 (n24lx), 59,90 (ofkyb)
  */
 export const INVICTUS_PAY_CONFIG = {
-  API_URL: 'https://api.invictuspay.app.br/api/public/v1',
-  API_TOKEN: import.meta.env.VITE_INVICTUS_TOKEN || 'IYCoH1R6LnB5POVuv5LTKwc9uyER0IPVcY9SrSSKU5fC0E1XauTIFRAMKF50',
+  API_URL: 'https://api.invictuspay.app.br/api/public/v1', 
+  API_TOKEN: 'IYCoH1R6LnB5POVuv5LTKwc9uyER0IPVcY9SrSSKU5fC0E1XauTIFRAMKF50', 
+  
+  // ID do produto pai conforme imagem (Código produto)
+  PRODUCT_ID: 'tudbgmmiyt', 
 
   OFFERS: {
-    FREE_SHIPPING: 'gmvowuyoib', // Oferta de R$ 79,90
-    PAID_SHIPPING: 'ld4kumu4vp', // Oferta de R$ 89,80 (Hash da imagem Neymar)
-    DISCOUNTED: 'offer_5990_discount', // Oferta de R$ 59,90 (Ajuste este hash se necessário)
+    FREE_SHIPPING: 'wzf27jv8np', // Oferta de R$ 79,90
+    PAID_SHIPPING: 'n24lx',      // Oferta de R$ 89,80
+    DISCOUNTED: 'ofkyb',         // Oferta de R$ 59,90 (Recuperação)
   },
-
+  
   ALLOW_TEST_MODE: false,
 };
 
 export const SUPABASE_CONFIG = {
-  URL: import.meta.env.VITE_SUPABASE_URL || 'https://rckqhortwgtztkcyqvik.supabase.co',
-  ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_C9OsSGE54AbAP2mkd9QWrw_Jyg1qYG1'
+  URL: 'https://rckqhortwgtztkcyqvik.supabase.co',
+  ANON_KEY: 'sb_publishable_C9OsSGE54AbAP2mkd9QWrw_Jyg1qYG1'
 };
