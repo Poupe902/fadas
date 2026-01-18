@@ -1,6 +1,20 @@
 
 import { INVICTUS_PAY_CONFIG } from '../constants';
 
+/**
+ * Garante que o objeto seja convertível em JSON sem erros de circularidade.
+ */
+function safeStringify(obj: any): string {
+  const cache = new WeakSet();
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (cache.has(value)) return;
+      cache.add(value);
+    }
+    return value;
+  });
+}
+
 export const pixService = {
   generatePixCharge: async (
     amount: number,
@@ -12,24 +26,13 @@ export const pixService = {
     productTitle: string
   ) => {
     try {
-      console.log("PIX Service: Iniciando geração...");
-      const token = INVICTUS_PAY_CONFIG.API_TOKEN || "";
-      console.log("PIX Service: Token presente?", !!token, "Tamanho:", token.length);
-
       const amountInCents = Math.round(amount * 100);
       const cleanCpf = cpf.replace(/\D/g, '');
-      let cleanPhone = phone.replace(/\D/g, '');
-
-      // Garante o prefixo 55 (Brasil) se não estiver presente
-      if (cleanPhone && cleanPhone.length <= 11) {
-        cleanPhone = "55" + cleanPhone;
-      }
-      if (!cleanPhone) cleanPhone = '5511999999999';
+      const cleanPhone = phone.replace(/\D/g, '') || '11999999999';
 
       const payload = {
         amount: amountInCents,
         product_hash: String(offerHash),
-        offer_hash: String(offerHash),
         payment_method: "pix",
         customer: {
           name: String(name),
@@ -37,53 +40,52 @@ export const pixService = {
           phone_number: String(cleanPhone),
           document: String(cleanCpf)
         },
-        cart: [
-          {
-            title: String(productTitle),
-            price: amountInCents,
-            quantity: 1,
-            product_hash: String(offerHash),
-            operation_type: 1,
-            tangible: true
-          }
-        ],
         installments: 1,
         expire_in_days: 1,
         transaction_origin: "api"
       };
 
-      const url = `${INVICTUS_PAY_CONFIG.API_URL}/transactions?api_token=${INVICTUS_PAY_CONFIG.API_TOKEN}`;
-      console.log("PIX Service: Chamando API...");
+      const url = `${INVICTUS_PAY_CONFIG.API_URL}/transactions`;
 
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${INVICTUS_PAY_CONFIG.API_TOKEN}`
+        },
         body: JSON.stringify(payload)
       });
 
       const json = await response.json();
-      console.log("PIX API Total Response:", json);
 
       if (!response.ok) {
-        const errorMsg = json.message || json.error || JSON.stringify(json);
-        console.error("ERRO DA API INVICTUS:", errorMsg);
-        throw new Error(errorMsg);
+        let errorMessage = json.message || "Erro no processamento do PIX.";
+        const lowerMsg = String(errorMessage).toLowerCase();
+
+        if (lowerMsg.includes('hash') || lowerMsg.includes('oferta') || response.status === 422) {
+          throw new Error("CREDENTIALS_MISMATCH");
+        }
+        throw new Error(String(errorMessage).toUpperCase());
       }
 
       const data = json.data || json;
-      const pixObj = data.pix || {};
+      const pixObj = data.pix || data;
 
-      // Tentativa de mapear diferentes formatos de resposta
-      const qrcode = pixObj.pix_qr_code || data.pix_code || data.pix_qr_code || "";
-      const imagem = pixObj.qr_code_base64 || data.pix_qr_code_url || "";
+      const pixCode = pixObj.pix_qr_code || pixObj.pix_code || data.pix_code || "";
+      const pixImage = pixObj.qr_code_base64 || pixObj.pix_qr_code_url || data.pix_qr_code_url || "";
+
+      if (!pixCode) {
+        console.error("PIX Payload Error:", json);
+        throw new Error("CREDENTIALS_MISMATCH");
+      }
 
       return {
-        qrcode,
-        imagem_base64: imagem,
+        qrcode: pixCode,
+        imagem_base64: pixImage || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`,
         id: data.hash || data.id || "tx_pix"
       };
     } catch (error: any) {
-      console.error("Erro Crítico no Serviço PIX:", error.message || error);
       throw error;
     }
   },
