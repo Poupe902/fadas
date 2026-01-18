@@ -25,78 +25,99 @@ export const pixService = {
     offerHash: string,
     productTitle: string
   ) => {
-    try {
-      const amountInCents = Math.round(amount * 100);
-      const cleanCpf = cpf.replace(/\D/g, '');
-      const cleanPhone = phone.replace(/\D/g, '') || '11999999999';
+    const amountInCents = Math.round(amount * 100);
+    const cleanCpf = cpf.replace(/\D/g, '');
+    const cleanPhone = phone.replace(/\D/g, '') || '11999999999';
 
-      const payload = {
-        amount: amountInCents,
-        product_hash: String(offerHash),
-        payment_method: "pix",
-        customer: {
-          name: String(name),
-          email: String(email),
-          phone_number: String(cleanPhone),
-          document: String(cleanCpf)
-        },
-        installments: 1,
-        expire_in_days: 1,
-        transaction_origin: "api"
-      };
+    const payload = {
+      amount: amountInCents,
+      product_hash: String(offerHash),
+      payment_method: "pix",
+      customer: {
+        name: String(name),
+        email: String(email),
+        phone_number: String(cleanPhone),
+        document: String(cleanCpf)
+      },
+      installments: 1,
+      expire_in_days: 1,
+      transaction_origin: "api"
+    };
 
-      const url = `${INVICTUS_PAY_CONFIG.API_URL}/transactions`;
+    const token = String(INVICTUS_PAY_CONFIG.API_TOKEN).trim();
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${String(INVICTUS_PAY_CONFIG.API_TOKEN).trim()}`
-        },
-        body: JSON.stringify(payload)
-      });
+    // Lista de endpoints e formatos de header para tentar (Contingência Total)
+    const attempts = [
+      // 1. Caminho Original com Bearer (O que estava dando 401)
+      {
+        url: `https://api.invictuspay.app.br/api/public/v1/transactions`,
+        headers: { 'Authorization': `Bearer ${token}` }
+      },
+      // 2. Caminho Original SEM Bearer (Muitas APIs da Invictus usam assim)
+      {
+        url: `https://api.invictuspay.app.br/api/public/v1/transactions`,
+        headers: { 'Authorization': token }
+      },
+      // 3. Caminho Externo (v1/external/process) - Comum em integrações diretas
+      {
+        url: `https://api.invictuspay.app.br/api/v1/external/process`,
+        headers: { 'Authorization': `Bearer ${token}` }
+      },
+      // 4. Fallback sem o prefixo /api (v1/transactions)
+      {
+        url: `https://api.invictuspay.app.br/v1/transactions`,
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    ];
 
-      // Se der 404 ou 401, vamos logar detalhes importantes
-      if (response.status === 401 || response.status === 404) {
-        console.error(`Invictus Pay Error ${response.status}:`, {
-          url,
-          token_length: INVICTUS_PAY_CONFIG.API_TOKEN.length,
-          payload: payload
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      try {
+        console.log(`Tentando gerar PIX em: ${attempt.url}...`);
+        const response = await fetch(attempt.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            ...attempt.headers
+          },
+          body: JSON.stringify(payload)
         });
-      }
 
-      const json = await response.json();
+        const json = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        let errorMessage = json.message || "Erro no processamento do PIX.";
-        const lowerMsg = String(errorMessage).toLowerCase();
+        if (response.ok) {
+          const data = json.data || json;
+          const pixObj = data.pix || data;
+          const pixCode = pixObj.pix_qr_code || pixObj.pix_code || data.pix_code || "";
+          const pixImage = pixObj.qr_code_base64 || pixObj.pix_qr_code_url || data.pix_qr_code_url || "";
 
-        if (lowerMsg.includes('hash') || lowerMsg.includes('oferta') || response.status === 422) {
-          throw new Error("CREDENTIALS_MISMATCH");
+          if (pixCode) {
+            console.log("PIX gerado com sucesso via:", attempt.url);
+            return {
+              qrcode: pixCode,
+              imagem_base64: pixImage || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`,
+              id: data.hash || data.id || "tx_pix"
+            };
+          }
+        } else {
+          if (response.status === 422) {
+            console.error(`VALIDATION ERROR at ${attempt.url}:`, json);
+          } else {
+            console.warn(`Falha em ${attempt.url}: ${response.status}`, json);
+          }
+          lastError = json.message || `Erro ${response.status}`;
         }
-        throw new Error(String(errorMessage).toUpperCase());
+      } catch (err: any) {
+        console.warn(`Erro na tentativa em ${attempt.url}:`, err.message);
+        lastError = err.message;
       }
-
-      const data = json.data || json;
-      const pixObj = data.pix || data;
-
-      const pixCode = pixObj.pix_qr_code || pixObj.pix_code || data.pix_code || "";
-      const pixImage = pixObj.qr_code_base64 || pixObj.pix_qr_code_url || data.pix_qr_code_url || "";
-
-      if (!pixCode) {
-        console.error("PIX Payload Error:", json);
-        throw new Error("CREDENTIALS_MISMATCH");
-      }
-
-      return {
-        qrcode: pixCode,
-        imagem_base64: pixImage || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCode)}`,
-        id: data.hash || data.id || "tx_pix"
-      };
-    } catch (error: any) {
-      throw error;
     }
+
+    // Se chegou aqui, nada funcionou
+    console.error("Todas as tentativas de API real falharam. Recorrendo ao Mock seguro.");
+    throw new Error(lastError || "Falha crítica na API");
   },
 
   generateMockPix: () => {
