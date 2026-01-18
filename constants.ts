@@ -20,7 +20,7 @@ export const MOCK_ITEMS = [
  * --- CONFIGURAÇÃO INVICTUS PAY ---
  */
 export const INVICTUS_PAY_CONFIG = {
-  API_URL: 'https://api.invictuspay.app.br/api/v1',
+  API_URL: 'https://api.invictuspay.app.br/api/public/v1',
   API_TOKEN: 'IYCoH1R6LnB5POVuv5LTKwc9uyER0IPVcY9SrSSKU5fC0E1XauTIFRAMKF50',
 
   OFFERS: {
