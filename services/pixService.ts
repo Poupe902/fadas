@@ -57,6 +57,15 @@ export const pixService = {
         body: JSON.stringify(payload)
       });
 
+      // Se der 404 ou 401, vamos logar detalhes importantes
+      if (response.status === 401 || response.status === 404) {
+        console.error(`Invictus Pay Error ${response.status}:`, {
+          url,
+          token_length: INVICTUS_PAY_CONFIG.API_TOKEN.length,
+          payload: payload
+        });
+      }
+
       const json = await response.json();
 
       if (!response.ok) {
